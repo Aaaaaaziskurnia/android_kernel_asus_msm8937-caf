@@ -10,6 +10,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
+#define HQ_HARDWARE_BOARD_V3 1
 
 &soc {
 	tlmm: pinctrl@1000000 {
@@ -20,8 +21,13 @@
 		#gpio-cells = <2>;
 		interrupt-controller;
 		#interrupt-cells = <2>;
+		
+#if HQ_HARDWARE_BOARD_V3
+    #include "msm8917-camera-pinctrl-boardv3.dtsi" 
+#else
+    #include "msm8917-camera-pinctrl.dtsi"
+#endif
 
-#include "msm8917-camera-pinctrl.dtsi"
 
 		/* add pingrp for touchscreen */
 		pmx_ts_int_active {
@@ -813,12 +819,12 @@
 		wsa_reset {
 			wsa_reset_on: wsa_reset_on {
 				mux {
-					pins = "gpio96";
+					pins = "gpio98";
 					function = "gpio";
 				};
 
 				config {
-					pins = "gpio96";
+					pins = "gpio98";
 					drive-strength = <2>; /* 2 MA */
 					output-high;
 				};
@@ -826,12 +832,12 @@
 
 			wsa_reset_off: wsa_reset_off {
 				mux {
-					pins = "gpio96";
+					pins = "gpio98";
 					function = "gpio";
 				};
 
 				config {
-					pins = "gpio96";
+					pins = "gpio98";
 					drive-strength = <2>; /* 2 MA */
 					output-low;
 				};
@@ -898,24 +904,24 @@
 		pri-tlmm-ws-lines {
 			pri_tlmm_ws_act: pri_tlmm_ws_act {
 				mux {
-					pins = "gpio87";
+					pins = "gpio86";
 					function = "pri_mi2s_ws";
 				};
 
 				config {
-					pins = "gpio87";
+					pins = "gpio86";
 					drive-strength = <8>;
 				};
 			};
 
 			pri_tlmm_ws_sus: pri_tlmm_ws_sus {
 				mux {
-					pins = "gpio87";
+					pins = "gpio86";
 					function = "pri_mi2s_ws";
 				};
 
 				config {
-					pins = "gpio87";
+					pins = "gpio86";
 					drive-strength = <2>;
 					bias-pull-down;
 				};
@@ -1190,6 +1196,80 @@
 				pins = "gpio97", "gpio131";
 				drive-strength = <2>;
 				bias-pull-up;
+			};
+		};
+
+		goodix_reset_reset: goodix_reset_reset {
+			mux {
+				pins = "gpio2";
+				function = "gpio";
+			};
+			config {
+				pins = "gpio2";
+				drive-strength = <2>;
+				bias-disable = <0>;
+				output-low;
+			};
+		};
+		goodix_reset_active: goodix_reset_active {
+			mux {
+				pins = "gpio2";
+				function = "gpio";
+			};
+			config {
+				pins = "gpio2";
+				drive-strength = <2>;
+				bias-disable = <0>;
+				output-high;
+			};
+		};
+		goodix_irq_active: goodix_irq_active {
+			mux {
+				pins = "gpio1";
+				function = "gpio";
+			};
+			config {
+				pins = "gpio1";
+				drive-strength = <2>;
+				bias-disable = <0>;
+				input-enable;
+			};
+		};
+
+		focal_reset_out0: focal_reset_out0 {
+			mux {
+				pins = "gpio2";
+				function = "gpio";
+			};
+			config {
+				pins = "gpio2";
+				drive-strength = <2>;
+				bias-disable = <0>;
+				output-low;
+			};
+		};
+		focal_reset_out1: goodix_reset_out1 {
+			mux {
+				pins = "gpio2";
+				function = "gpio";
+			};
+			config {
+				pins = "gpio2";
+				drive-strength = <2>;
+				bias-disable = <0>;
+				output-high;
+			};
+		};
+		focal_irq_active: focal_irq_active {
+			mux {
+				pins = "gpio1";
+				function = "gpio";
+			};
+			config {
+				pins = "gpio1";
+				drive-strength = <2>;
+				bias-disable = <0>;
+				input-enable;
 			};
 		};
 	};

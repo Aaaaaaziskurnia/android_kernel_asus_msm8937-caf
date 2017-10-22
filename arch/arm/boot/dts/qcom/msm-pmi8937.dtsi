@@ -138,6 +138,7 @@
 				qcom,hw-settle-time = <0>;
 				qcom,fast-avg-setup = <0>;
 			};
+
 		};
 
 		pmi8937_mpps: mpps {
@@ -175,15 +176,19 @@
 			#size-cells = <1>;
 
 			qcom,iterm-ma = <100>;
-			qcom,float-voltage-mv = <4200>;
+			qcom,float-voltage-mv = <4350>;
+			qcom,fastchg-current-ma = <1500>;
+			//qcom,mpp4-vadc = <&pm8937_vadc>;
 			qcom,resume-delta-mv = <200>;
 			qcom,chg-inhibit-fg;
 			qcom,rparasitic-uohm = <100000>;
 			qcom,bms-psy-name = "bms";
+			qcom,dc-psy-type = "Mains";
+			qcom,dc-psy-ma = <2000>;
 			qcom,thermal-mitigation = <1500 700 600 0>;
-			qcom,parallel-usb-min-current-ma = <1400>;
-			qcom,parallel-usb-9v-min-current-ma = <900>;
-			qcom,parallel-allowed-lowering-ma = <500>;
+			//qcom,parallel-usb-min-current-ma = <1400>;
+			//qcom,parallel-usb-9v-min-current-ma = <900>;
+			//qcom,parallel-allowed-lowering-ma = <500>;
 			qcom,pmic-revid = <&pmi8937_revid>;
 			qcom,force-aicl-rerun;
 			qcom,aicl-rerun-period-s = <180>;
@@ -299,7 +304,7 @@
 			qcom,fg-cutoff-voltage-mv = <3500>;
 			qcom,cycle-counter-en;
 			qcom,capacity-learning-on;
-
+			qcom,irq-volt-empty-mv = <3450>;
 			qcom,fg-soc@4000 {
 			status = "okay";
 				reg = <0x4000 0x100>;
@@ -510,30 +515,12 @@
 		pmi_haptic: qcom,haptic@c000 {
 			compatible = "qcom,qpnp-haptic";
 			reg = <0xc000 0x100>;
-			interrupts = <0x3 0xc0 0x0>,
-				<0x3 0xc0 0x1>;
-			interrupt-names = "sc-irq", "play-irq";
-			vcc_pon-supply = <&pon_perph_reg>;
 			qcom,play-mode = "direct";
 			qcom,wave-play-rate-us = <5263>;
-			qcom,actuator-type = "lra";
-			qcom,wave-shape = "square";
-			qcom,vmax-mv = <2000>;
+			qcom,actuator-type = "erm";
+			qcom,vmax-mv = <3000>;
 			qcom,ilim-ma = <800>;
-			qcom,sc-deb-cycles = <8>;
-			qcom,int-pwm-freq-khz = <505>;
-			qcom,en-brake;
-			qcom,brake-pattern = [03 03 00 00];
-			qcom,use-play-irq;
-			qcom,use-sc-irq;
-			qcom,wave-samples = [3e 3e 3e 3e 3e 3e 3e 3e];
-			qcom,wave-rep-cnt = <1>;
-			qcom,wave-samp-rep-cnt = <1>;
-			qcom,lra-auto-res-mode="qwd";
-			qcom,lra-high-z="opt1";
-			qcom,lra-res-cal-period = <4>;
-			qcom,correct-lra-drive-freq;
-			qcom,misc-trim-error-rc19p2-clk-reg-present;
+
 		};
 	};
 };

@@ -1,0 +1,50 @@
+
+qcom,2882594_huaqin_c11p1612scud_5000mah_averaged_masterslave_apr17th2017 {
+	/* #2882594_Huaqin_C11P1612scud_5000mAh_averaged_MasterSlave_Apr17th2017*/
+	qcom,max-voltage-uv = <4400000>;
+	qcom,nom-batt-capacity-mah = <5000>;
+	qcom,batt-id-kohm = <51>;
+	qcom,battery-beta = <3435>;
+	qcom,battery-type = "C11P1612-O-01-0001-14.2016.1703.120";
+	qcom,thermal-coefficients = [C5 86 BE 50 D1 37];
+	qcom,chg-rslow-comp-c1 = <3953939>;
+	qcom,chg-rslow-comp-c2 = <6997629>;
+	qcom,chg-rs-to-rslow = <850130>;
+	qcom,chg-rslow-comp-thr = <0xB8>;
+	qcom,checksum = <0xADE8>;
+	qcom,gui-version = "PMI8950GUI - 2.0.0.16";
+	qcom,fg-profile-data = [
+		 F7 83 B5 7D 
+		 B5 81 2F 7C 
+		 5A 83 A9 5F 
+		 20 82 24 8D 
+		 0A 82 02 9B 
+		 53 BE CB CB 
+		 5B 0E 08 88 
+		 09 7E C4 81 
+		 1A 7C 53 83 
+		 0E 6B B5 73 
+		 B1 85 47 82 
+		 EB 99 3E BD 
+		 45 CA 5B 0D 
+		 D2 13 45 59 
+		 14 70 29 FC 
+		 C5 3E CC 46 
+		 A6 43 00 00 
+		 FE 46 30 39 
+		 1E 2A 00 00 
+		 00 00 00 00 
+		 00 00 00 00 
+		 A7 6B D0 69 
+		 E3 47 33 89 
+		 6D 77 16 71 
+		 09 6C C4 79 
+		 4A 74 F4 68 
+		 C9 60 D1 A3 
+		 24 22 60 65 
+		 5D A0 71 0C 
+		 28 00 FF 36 
+		 F0 11 30 03 
+		 00 00 00 0C 
+	];
+};

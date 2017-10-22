@@ -10,9 +10,15 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
+#define HQ_HARDWARE_BOARD_V3  1
 
 #include "msm8917-pinctrl.dtsi"
-#include "msm8917-camera-sensor-mtp.dtsi"
+/******************* yinyapeng add to adapt to board v3 **************************/
+#if HQ_HARDWARE_BOARD_V3 
+    #include "msm8917-camera-sensor-mtp-boardv3.dtsi"
+#else
+    #include "msm8917-camera-sensor-mtp.dtsi"
+#endif
 
 &spi_3 { /* BLSP1 QUP3 */
 	spi-max-frequency = <16000000>;
@@ -71,16 +77,40 @@
 		};
 	};
 
-	hbtp {
-		compatible = "qcom,hbtp-input";
-		vcc_ana-supply = <&pm8917_l10>;
-		vcc_dig-supply = <&pm8917_l5>;
-		qcom,afe-load = <50000>;
-		qcom,afe-vtg-min = <2850000>;
-		qcom,afe-vtg-max = <2850000>;
-		qcom,dig-load = <15000>;
-		qcom,dig-vtg-min = <1800000>;
-		qcom,dig-vtg-max = <1800000>;
+	goodix_fp {
+		compatible = "goodix,fingerprint";
+		input-device-name = "gf5216";
+		interrupt-parent = <&tlmm>;
+		interrupts = <1 0x0>;
+
+		goodix,gpio_reset    = <&tlmm 2 0>;
+		goodix,gpio_irq      = <&tlmm 1 0>;
+
+		pinctrl-names = "goodixfp_reset_reset",
+				"goodixfp_reset_active",
+				"goodixfp_irq_active";
+
+		pinctrl-0 = <&goodix_reset_reset>;
+		pinctrl-1 = <&goodix_reset_active>;
+		pinctrl-2 = <&goodix_irq_active>;
+	};
+	
+        focal_fp {
+		compatible = "focal,fingerprint";
+		input-device-name = "qwerty";
+		interrupt-parent = <&tlmm>;
+		interrupts = <1 0x0>;
+
+		focal,gpio_reset    = <&tlmm 2 0>;
+		focal,gpio_irq      = <&tlmm 1 0>;
+
+		pinctrl-names = "focalfp_reset_out1",
+				"focalfp_reset_out0",
+				"focalfp_irq_active";
+
+		pinctrl-0 = <&focal_reset_out1>;
+		pinctrl-1 = <&focal_reset_out0>;
+		pinctrl-2 = <&focal_irq_active>;
 	};
 };
 
@@ -98,11 +128,8 @@
 };
 
 &pmi_haptic{
-	qcom,actuator-type = "lra";
-	qcom,wave-play-rate-us = <4165>;
-	qcom,lra-auto-res-mode="qwd";
-	qcom,lra-high-z="opt1";
-	qcom,lra-res-cal-period = <0>;
+	status = "ok";
+	qcom,actuator-type = "erm";
 };
 
 &blsp1_uart2 {
@@ -122,7 +149,7 @@
 };
 
 &mdss_dsi0 {
-	qcom,dsi-pref-prim-pan = <&dsi_truly_720_vid>;
+	qcom,dsi-pref-prim-pan = <&dsi_ili9881c_fhd_vid>;
 	pinctrl-names = "mdss_default", "mdss_sleep";
 	pinctrl-0 = <&mdss_dsi_active &mdss_te_active>;
 	pinctrl-1 = <&mdss_dsi_suspend &mdss_te_suspend>;
@@ -130,6 +157,7 @@
 	qcom,platform-te-gpio = <&tlmm 24 0>;
 	qcom,platform-reset-gpio = <&tlmm 60 0>;
 	qcom,platform-bklight-en-gpio = <&tlmm 98 0>;
+	qcom,regulator-ldo-mode;
 };
 
 &dsi_truly_720_vid {
@@ -149,6 +177,14 @@
 	qcom,panel-supply-entries = <&dsi_panel_pwr_supply>;
 	qcom,mdss-dsi-pan-enable-dynamic-fps;
 	qcom,mdss-dsi-pan-fps-update = "dfps_immediate_porch_mode_vfp";
+};
+
+&dsi_ili9881c_fhd_vid {
+	qcom,panel-supply-entries = <&dsi_panel_pwr_supply>;
+};
+
+&dsi_hx8394f_720p_video {
+	qcom,panel-supply-entries = <&dsi_panel_pwr_supply>;
 };
 
 &sdhc_1 {
@@ -200,7 +236,7 @@
 		1 &intc 0 221 0
 		2 &tlmm 67 0>;
 	interrupt-names = "hc_irq", "pwr_irq", "status_irq";
-	cd-gpios = <&tlmm 67 0x1>;
+	cd-gpios = <&tlmm 67 0x0>;
 
 	qcom,clk-rates = <400000 20000000 25000000 50000000 100000000
 								200000000>;

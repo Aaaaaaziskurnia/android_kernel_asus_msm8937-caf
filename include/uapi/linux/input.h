@@ -794,6 +794,15 @@ struct input_keymap_entry {
 #define BTN_TRIGGER_HAPPY39		0x2e6
 #define BTN_TRIGGER_HAPPY40		0x2e7
 
+#define GESTURE_C                       0x2f0
+#define GESTURE_E                       0x2f1
+#define GESTURE_S                       0x2f2
+#define GESTURE_V                       0x2f3
+#define GESTURE_W                       0x2f4
+#define GESTURE_Z                       0x2f5
+#define GESTURE_UP                      0x2f6
+#define GESTURE_DOUBLECLICK             0x2f7
+
 /* We avoid low common keys in module aliases so they don't get huge. */
 #define KEY_MIN_INTERESTING	KEY_MUTE
 #define KEY_MAX			0x2ff

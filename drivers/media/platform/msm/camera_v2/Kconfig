@@ -241,3 +241,15 @@ config MSM_JPEGDMA
         select V4L2_MEM2MEM_DEV
 	---help---
 	  Enable support for Jpeg dma engine.
+
+config HQ_HI556_OTP
+	bool "Huaqin configurate hi556 otp"
+
+	---help---
+	  Say Y if supported
+config HQ_HI846_OTP
+	bool "Huaqin configurate hi846 otp"
+
+	---help---
+	  Say Y if supported
+

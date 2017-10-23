@@ -2336,10 +2336,11 @@ void mdss_dsi_wait4video_done(struct mdss_dsi_ctrl_pdata *ctrl)
 
 	/* DSI_INTL_CTRL */
 	data = MIPI_INP((ctrl->ctrl_base) + 0x0110);
-	/* clear previous VIDEO_DONE interrupt first */
-	data &= DSI_INTR_TOTAL_MASK;
-	MIPI_OUTP((ctrl->ctrl_base) + 0x0110, (data | DSI_INTR_VIDEO_DONE));
-	wmb(); /* make sure write happened */
+	/* clear previous VIDEO_DONE interrupt as well */
+	data &= (DSI_INTR_TOTAL_MASK | DSI_INTR_VIDEO_DONE);
+	data |= DSI_INTR_VIDEO_DONE_MASK;
+
+	MIPI_OUTP((ctrl->ctrl_base) + 0x0110, data);
 
 	spin_lock_irqsave(&ctrl->mdp_lock, flag);
 	reinit_completion(&ctrl->video_comp);
@@ -2371,17 +2372,8 @@ static int mdss_dsi_wait4video_eng_busy(struct mdss_dsi_ctrl_pdata *ctrl)
 
 	if (ctrl->ctrl_state & CTRL_STATE_MDP_ACTIVE) {
 		mdss_dsi_wait4video_done(ctrl);
-		v_total = mdss_panel_get_vtotal(pinfo);
-		v_blank = pinfo->lcdc.v_back_porch + pinfo->lcdc.v_pulse_width;
-		if (pinfo->dynamic_fps && pinfo->current_fps)
-			fps = pinfo->current_fps;
-		else
-			fps = pinfo->mipi.frame_rate;
-
-		sleep_ms = CEIL((v_blank * 1000), (v_total * fps));
-		/* delay sleep_ms to skip BLLP */
-		if (sleep_ms)
-			usleep_range((sleep_ms * 1000), (sleep_ms * 1000) + 10);
+		/* delay 4 ms to skip BLLP */
+		usleep_range(4000, 4000);
 		ret = 1;
 	}
 

@@ -224,13 +224,13 @@ static int mdss_dsi_request_gpios(struct mdss_dsi_ctrl_pdata *ctrl_pdata)
 {
 	int rc = 0;
 
-	if (gpio_is_valid(ctrl_pdata->disp_en_gpio)) {
-		rc = gpio_request(ctrl_pdata->disp_en_gpio,
-						"disp_enable");
+	if (gpio_is_valid(ctrl_pdata->lcm_vsn)) {
+		rc = gpio_request(ctrl_pdata->lcm_vsn,
+						"lcm_vsn");
 		if (rc) {
 			pr_err("request disp_en gpio failed, rc=%d\n",
 				       rc);
-			goto disp_en_gpio_err;
+			goto lcm_vsn_gpio_err;
 		}
 	}
 	rc = gpio_request(ctrl_pdata->rst_gpio, "disp_rst_n");
@@ -239,13 +239,13 @@ static int mdss_dsi_request_gpios(struct mdss_dsi_ctrl_pdata *ctrl_pdata)
 			rc);
 		goto rst_gpio_err;
 	}
-	if (gpio_is_valid(ctrl_pdata->bklt_en_gpio)) {
-		rc = gpio_request(ctrl_pdata->bklt_en_gpio,
-						"bklt_enable");
+	if (gpio_is_valid(ctrl_pdata->lcm_vsp)) {
+		rc = gpio_request(ctrl_pdata->lcm_vsp,
+						"lcm_vsp");
 		if (rc) {
 			pr_err("request bklt gpio failed, rc=%d\n",
 				       rc);
-			goto bklt_en_gpio_err;
+			goto lcm_vsp_gpio_err;
 		}
 	}
 	if (gpio_is_valid(ctrl_pdata->mode_gpio)) {
@@ -259,14 +259,14 @@ static int mdss_dsi_request_gpios(struct mdss_dsi_ctrl_pdata *ctrl_pdata)
 	return rc;
 
 mode_gpio_err:
-	if (gpio_is_valid(ctrl_pdata->bklt_en_gpio))
-		gpio_free(ctrl_pdata->bklt_en_gpio);
-bklt_en_gpio_err:
+	if (gpio_is_valid(ctrl_pdata->lcm_vsp))
+		gpio_free(ctrl_pdata->lcm_vsp);
+lcm_vsp_gpio_err:
 	gpio_free(ctrl_pdata->rst_gpio);
 rst_gpio_err:
-	if (gpio_is_valid(ctrl_pdata->disp_en_gpio))
-		gpio_free(ctrl_pdata->disp_en_gpio);
-disp_en_gpio_err:
+	if (gpio_is_valid(ctrl_pdata->lcm_vsn))
+		gpio_free(ctrl_pdata->lcm_vsn);
+lcm_vsn_gpio_err:
 	return rc;
 }
 
@@ -293,7 +293,12 @@ int mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
 		return rc;
 	}
 
-	if (!gpio_is_valid(ctrl_pdata->disp_en_gpio)) {
+	if (!gpio_is_valid(ctrl_pdata->lcm_vsn)) {
+		pr_debug("%s:%d, reset line not configured\n",
+			   __func__, __LINE__);
+	}
+
+	if (!gpio_is_valid(ctrl_pdata->lcm_vsp)) {
 		pr_debug("%s:%d, reset line not configured\n",
 			   __func__, __LINE__);
 	}
@@ -313,7 +318,18 @@ int mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
 			return rc;
 		}
 		if (!pinfo->cont_splash_enabled) {
-			if (gpio_is_valid(ctrl_pdata->disp_en_gpio)) {
+			if (gpio_is_valid(ctrl_pdata->lcm_vsn)) {
+				rc = gpio_direction_output(ctrl_pdata->lcm_vsn, 1);
+				if (rc) {
+					pr_err("%s: unable to set dir for bklt gpio\n",
+					__func__);
+					goto exit;
+				}
+			}
+
+			mdelay(2);
+
+			if (gpio_is_valid(ctrl_pdata->lcm_vsp)) {
 				rc = gpio_direction_output(
 					ctrl_pdata->disp_en_gpio, 1);
 				if (rc) {
@@ -322,6 +338,8 @@ int mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
 					goto exit;
 				}
 			}
+
+			mdelay(5);
 
 			if (pdata->panel_info.rst_seq_len) {
 				rc = gpio_direction_output(ctrl_pdata->rst_gpio,
@@ -373,13 +391,13 @@ int mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
 			pr_debug("%s: Reset panel done\n", __func__);
 		}
 	} else {
-		if (gpio_is_valid(ctrl_pdata->bklt_en_gpio)) {
-			gpio_set_value((ctrl_pdata->bklt_en_gpio), 0);
-			gpio_free(ctrl_pdata->bklt_en_gpio);
+		if (gpio_is_valid(ctrl_pdata->lcm_vsn)) {
+			gpio_set_value((ctrl_pdata->lcm_vsn), 0);
+			gpio_free(ctrl_pdata->lcm_vsn);
 		}
-		if (gpio_is_valid(ctrl_pdata->disp_en_gpio)) {
-			gpio_set_value((ctrl_pdata->disp_en_gpio), 0);
-			gpio_free(ctrl_pdata->disp_en_gpio);
+		if (gpio_is_valid(ctrl_pdata->lcm_vsp)) {
+			gpio_set_value((ctrl_pdata->lcm_vsp), 0);
+			gpio_free(ctrl_pdata->lcm_vsp);
 		}
 		gpio_set_value((ctrl_pdata->rst_gpio), 0);
 		gpio_free(ctrl_pdata->rst_gpio);

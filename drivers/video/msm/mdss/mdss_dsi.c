@@ -26,6 +26,7 @@
 #include <linux/uaccess.h>
 #include <linux/msm-bus.h>
 #include <linux/pm_qos.h>
+#include <linux/hqsysfs.h>
 
 #include "mdss.h"
 #include "mdss_panel.h"
@@ -2718,12 +2719,13 @@ static struct device_node *mdss_dsi_pref_prim_panel(
  *
  * returns pointer to panel node on success, NULL on error.
  */
+static char panel_name[MDSS_MAX_PANEL_LEN] = "";
 static struct device_node *mdss_dsi_find_panel_of_node(
 		struct platform_device *pdev, char *panel_cfg)
 {
 	int len, i = 0;
 	int ctrl_id = pdev->id - 1;
-	char panel_name[MDSS_MAX_PANEL_LEN] = "";
+	//char panel_name[MDSS_MAX_PANEL_LEN] = "";
 	char ctrl_id_stream[3] =  "0:";
 	char *str1 = NULL, *str2 = NULL, *override_cfg = NULL;
 	char cfg_np_name[MDSS_MAX_PANEL_LEN] = "";
@@ -2784,6 +2786,11 @@ static struct device_node *mdss_dsi_find_panel_of_node(
 		}
 		pr_info("%s: cmdline:%s panel_name:%s\n",
 			__func__, panel_cfg, panel_name);
+
+		if(0 == strcmp(panel_name,"qcom,mdss_dsi_nt35521s_boe_wxga_video"))
+			hq_regiser_hw_info(HWID_LCM,"NT35523B BOE 800*1280");
+		else if(0 == strcmp(panel_name,"qcom,mdss_dsi_nt35521s_wxga_video"))
+			hq_regiser_hw_info(HWID_LCM,"NT35521S INX 800*1280");
 		if (!strcmp(panel_name, NONE_PANEL))
 			goto exit;
 
@@ -3975,6 +3982,20 @@ static int mdss_dsi_parse_gpio_params(struct platform_device *ctrl_pdev,
 		"qcom,platform-bklight-en-gpio", 0);
 	if (!gpio_is_valid(ctrl_pdata->bklt_en_gpio))
 		pr_info("%s: bklt_en gpio not specified\n", __func__);
+
+	ctrl_pdata->lcm_vsn= of_get_named_gpio(ctrl_pdev->dev.of_node,
+		"qcom,platform-vsn-gpio", 0);
+
+	if (!gpio_is_valid(ctrl_pdata->lcm_vsn))
+		pr_err("%s:%d, lcm_vsn gpio not specified\n",
+						__func__, __LINE__);
+
+	ctrl_pdata->lcm_vsp= of_get_named_gpio(ctrl_pdev->dev.of_node,
+		"qcom,platform-vsp-gpio", 0);
+
+	if (!gpio_is_valid(ctrl_pdata->lcm_vsp))
+		pr_err("%s:%d, lcm_vsp gpio not specified\n",
+						__func__, __LINE__);
 
 	ctrl_pdata->rst_gpio = of_get_named_gpio(ctrl_pdev->dev.of_node,
 			 "qcom,platform-reset-gpio", 0);

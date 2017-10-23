@@ -427,6 +427,8 @@ struct mmc_card {
 	enum mmc_pon_type pon_type;
 	u8 *cached_ext_csd;
 	bool cmdq_init;
+	char mmc_total_size[10];    /*add by liunianliang for SWTASK-119*/
+	char mmc_info[20];
 	struct mmc_bkops_info bkops;
 };
 

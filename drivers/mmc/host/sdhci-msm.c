@@ -2170,7 +2170,8 @@ out:
 static int sdhci_msm_setup_vreg(struct sdhci_msm_pltfm_data *pdata,
 			bool enable, bool is_init)
 {
-	int ret = 0, i;
+	int ret = 0, i, gpio_value = -1;
+	static int first_flag = 1;
 	struct sdhci_msm_slot_reg_data *curr_slot;
 	struct sdhci_msm_reg_data *vreg_table[2];
 
@@ -2184,10 +2185,18 @@ static int sdhci_msm_setup_vreg(struct sdhci_msm_pltfm_data *pdata,
 	vreg_table[0] = curr_slot->vdd_data;
 	vreg_table[1] = curr_slot->vdd_io_data;
 
+	if ((gpio_is_valid(pdata->status_gpio))&&(pdata->status_gpio == 67)&&first_flag) {//sdcard
+		gpio_value = gpio_get_value(pdata->status_gpio);
+	}
+
 	for (i = 0; i < ARRAY_SIZE(vreg_table); i++) {
 		if (vreg_table[i]) {
-			if (enable)
-				ret = sdhci_msm_vreg_enable(vreg_table[i]);
+			if (enable) {
+				if ((gpio_value==0)&&first_flag&&(i==0))//first boot don't power up ldo11
+					first_flag = 0;
+				else
+					ret = sdhci_msm_vreg_enable(vreg_table[i]);
+			}
 			else
 				ret = sdhci_msm_vreg_disable(vreg_table[i]);
 			if (ret)
@@ -2233,8 +2242,12 @@ static int sdhci_msm_vreg_init(struct device *dev,
 			goto vdd_reg_deinit;
 	}
 
-	if (ret)
-		dev_err(dev, "vreg reset failed (%d)\n", ret);
+	if (strcmp(dev_name(dev), "7864900.sdhci")) {// mmc1(sdcard) don't reset power
+		if (ret)
+			dev_err(dev, "vreg reset failed (%d)\n", ret);
+	} else {//sdcard
+		sdhci_msm_setup_vreg(pdata, 0, true);//pull down vdd / vdd-io
+	}
 	goto out;
 
 vdd_io_reg_deinit:

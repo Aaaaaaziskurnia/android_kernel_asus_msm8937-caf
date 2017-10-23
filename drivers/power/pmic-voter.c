@@ -166,6 +166,10 @@ int vote(struct votable *votable, int client_id, bool state, int val)
 	pr_debug("%s: %d voting for %d - %s\n",
 			votable->name,
 			client_id, val, state ? "on" : "off");
+
+    printk("%s: %d voting for %d - %s\n",
+			votable->name,
+			client_id, val, state ? "on" : "off");
 	switch (votable->type) {
 	case VOTE_MIN:
 		effective_id = vote_min(votable);

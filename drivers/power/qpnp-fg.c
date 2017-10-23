@@ -34,7 +34,16 @@
 #include <linux/spinlock.h>
 #include <linux/string_helpers.h>
 #include <linux/alarmtimer.h>
+#include <linux/proc_fs.h>
+#include <linux/fs.h>
 #include <linux/qpnp/qpnp-revid.h>
+#include <linux/switch.h>
+/*jiahao add for usb connector state debug @2017-05-22 start*/
+#include <linux/thermal.h>
+
+#define USB_CONNECTOR_STATE_DEBUG
+
+/*jiahao add for usb connector state debug @2017-05-22 end*/
 
 /* Register offsets */
 
@@ -246,8 +255,8 @@ static struct fg_mem_setting settings[FG_MEM_SETTING_MAX] = {
 	SETTING(BCL_MH_THRESHOLD, 0x47C,   3,      752),
 	SETTING(TERM_CURRENT,	 0x40C,   2,      250),
 	SETTING(CHG_TERM_CURRENT, 0x4F8,   2,      250),
-	SETTING(IRQ_VOLT_EMPTY,	 0x458,   3,      3100),
-	SETTING(CUTOFF_VOLTAGE,	 0x40C,   0,      3200),
+	SETTING(IRQ_VOLT_EMPTY,	 0x458,   3,      3400),
+	SETTING(CUTOFF_VOLTAGE,	 0x40C,   0,      3450),
 	SETTING(VBAT_EST_DIFF,	 0x000,   0,      30),
 	SETTING(DELTA_SOC,	 0x450,   3,      1),
 	SETTING(BATT_LOW,	 0x458,   0,      4200),
@@ -310,7 +319,7 @@ static struct fg_mem_data fg_backup_regs[FG_BACKUP_MAX] = {
 	BACKUP(MAH_TO_SOC,	0x4A0,   0,      4,     -EINVAL),
 };
 
-static int fg_debug_mask;
+static int fg_debug_mask = 0x00; //0x44;
 module_param_named(
 	debug_mask, fg_debug_mask, int, S_IRUSR | S_IWUSR
 );
@@ -405,6 +414,10 @@ enum batt_info_params {
 struct register_offset {
 	u16 address[MAX_ADDRESS];
 };
+struct battery_name {
+	struct switch_dev battery_switch_dev;
+	char battery_name_type[100];
+	} battery_name;
 
 static struct register_offset offset[] = {
 	[0] = {
@@ -638,6 +651,7 @@ struct fg_chip {
 	bool			batt_info_restore;
 	bool			*batt_range_ocv;
 	int			*batt_range_pct;
+	struct delayed_work	charge_limit;
 };
 
 /* FG_MEMIF DEBUGFS structures */
@@ -1962,12 +1976,12 @@ static void fg_handle_battery_insertion(struct fg_chip *chip)
 	schedule_delayed_work(&chip->update_sram_data, msecs_to_jiffies(0));
 }
 
-
+#if 0
 static int soc_to_setpoint(int soc)
 {
 	return DIV_ROUND_CLOSEST(soc * 255, 100);
 }
-
+#endif
 static void batt_to_setpoint_adc(int vbatt_mv, u8 *data)
 {
 	int val;
@@ -2474,6 +2488,30 @@ static int64_t twos_compliment_extend(int64_t val, int nbytes)
 	return val;
 }
 
+extern int asus_limit_otg_current(bool is_limit);
+
+#define SW_JEITA_TANGJUN
+#ifdef SW_JEITA_TANGJUN
+enum sw_jeita_status {
+	SWJEITA_LOW_TEMP,		//0-10C		4.38V/1.4A
+	SWJEITA_QUICK_LOW_TEMP,		//10-20C	4.38V/2.0A
+	SWJEITA_QUICK_NOR_TEMP_LOW_VOL,	//20-50C<4.18V	4.18V/2.0A
+	SWJEITA_QUICK_NOR_TEMP_HIGH_VOL,//20-50C>4.18V	4.38V/1.4A
+	SWJEITA_HIGH_TEMP,		//50-60C	4.08V/2.0A
+	SWJEITA_MAX,
+};
+#define BATT_SW_JEITA_COLD		0
+#define BATT_SW_JEITA_COOL		100
+#define BATT_SW_JEITA_NORM_COOL		170
+#define BATT_SW_JEITA_NORMAL		200
+#define BATT_SW_JEITA_WARM_NORM		470
+#define BATT_SW_JEITA_WARM		500
+#define BATT_SW_JEITA_HOT		600
+static bool vbat_is_over_4180mv = false;
+static int set_prop_sw_jeita_vol_cur(struct fg_chip *chip, int vol_mv, int cur_ma);
+static void sw_jeita_tangjun(struct fg_chip *chip);
+#endif
+
 #define LSB_24B_NUMRTR		596046
 #define LSB_24B_DENMTR		1000000
 #define LSB_16B_NUMRTR		152587
@@ -2486,6 +2524,7 @@ static int64_t twos_compliment_extend(int64_t val, int nbytes)
 static int update_sram_data(struct fg_chip *chip, int *resched_ms)
 {
 	int i, j, rc = 0;
+	int current_byr = 0 ;
 	u8 reg[4];
 	int64_t temp;
 	int battid_valid = fg_is_batt_id_valid(chip);
@@ -2493,7 +2532,9 @@ static int update_sram_data(struct fg_chip *chip, int *resched_ms)
 	fg_stay_awake(&chip->update_sram_wakeup_source);
 	if (chip->fg_restarting)
 		goto resched;
-
+	current_byr = get_sram_prop_now(chip,FG_DATA_CURRENT);
+	printk("byr_chrg_current = %d \n",current_byr);
+	
 	fg_mem_lock(chip);
 	for (i = 1; i < FG_DATA_MAX; i++) {
 		if (chip->profile_loaded && i >= FG_DATA_BATT_ID)
@@ -2522,6 +2563,9 @@ static int update_sram_data(struct fg_chip *chip, int *resched_ms)
 			fg_data[i].value = div_s64(
 					(s64)temp * LSB_16B_NUMRTR,
 					LSB_16B_DENMTR);
+			if(fg_data[i].value > 3300000) {
+				asus_limit_otg_current(true);
+			}
 			break;
 		case FG_DATA_BATT_ESR:
 			fg_data[i].value = float_decode((u16) temp);
@@ -2554,11 +2598,21 @@ static int update_sram_data(struct fg_chip *chip, int *resched_ms)
 			break;
 		};
 
+		#ifdef SW_JEITA_TANGJUN
+		if(FG_DATA_VOLTAGE == i) {
+			vbat_is_over_4180mv = (fg_data[i].value >= 4160000)?(true):(false);
+		}
+		#endif
+	    printk("byr_chrg_fg  %s ",__func__);
+		printk("%d %lld %d\n", i, temp, fg_data[i].value);
 		if (fg_debug_mask & FG_MEM_DEBUG_READS)
 			pr_info("%d %lld %d\n", i, temp, fg_data[i].value);
 	}
 	fg_mem_release(chip);
 
+#ifdef SW_JEITA_TANGJUN
+	sw_jeita_tangjun(chip);
+#endif
 	/* Backup the registers whenever no error happens during update */
 	if (fg_reset_on_lockup && !chip->ima_error_handling) {
 		if (!rc) {
@@ -2681,6 +2735,197 @@ out:
 			&chip->update_sram_data,
 			msecs_to_jiffies(resched_ms));
 }
+/*byr add demo app charging limit  start */
+extern void fg_smbchg_charging_en(bool en);
+
+static int charger_limit_enbale = 0;
+static int limit_capacity = 0;
+static char charger_limit[8] = "0";
+static bool charge_disable = 0;
+static struct proc_dir_entry *limit_enbale_entry = NULL;
+static struct proc_dir_entry *limit_entry = NULL;
+
+#define CHARGER_LIMIT_EN_PROC_FILE     "driver/charger_limit_enable"
+#define CHARGER_LIMIT_PROC_FILE     "driver/charger_limit"
+#define CHARGE_LIMIT_DELAY_MS  5000   //5S
+
+ ssize_t charger_limit_enbale_read_proc(struct file *file, char __user *page, size_t size, loff_t *ppos)
+{
+	char *ptr = page;
+	if (*ppos)  // CMD call again
+		return 0;
+
+	ptr += sprintf(ptr, "%d\n", charger_limit_enbale);
+
+	*ppos += ptr - page;
+	return (ptr - page);
+}
+struct fg_chip *limit_chip = NULL;
+
+static ssize_t charger_limit_enbale_write_proc(struct file *file, const char __user *buff, size_t size, loff_t *ppos)
+{
+	
+	char wtire_data[32] = {0};
+
+	if (size >= 32)
+		return -EFAULT;
+
+	if (copy_from_user( &wtire_data, buff, size ))
+		return -EFAULT;
+	if (limit_chip == NULL){
+		printk("byr_: %s, limit_chip == NULL !!!\n", __func__);
+		return -EFAULT;
+	}
+
+	if (wtire_data[0] == '1'){
+		charger_limit_enbale = 1;
+		schedule_delayed_work(&limit_chip->charge_limit,msecs_to_jiffies(1000)); //1S
+		
+		printk("byr_: %s,  schedule_delayed_work /charge limit/  start!! \n", __func__);
+			}
+	else{
+		charger_limit_enbale = 0;
+		cancel_delayed_work_sync(&limit_chip->charge_limit);
+		fg_smbchg_charging_en(1);
+		charge_disable = 0;
+		printk("byr_: %s, /charge limit/  cancel & recover charging!! \n", __func__);
+    }
+	printk("byr_: %s, ****************  charger_limit_enbale = %d\n", __func__, charger_limit_enbale);
+
+	return size;
+}
+
+static const struct file_operations charger_limit_enbale_proc_ops = {
+    .read = charger_limit_enbale_read_proc,
+    .write = charger_limit_enbale_write_proc,
+};
+
+
+ ssize_t charger_limit_read_proc(struct file *file, char __user *page, size_t size, loff_t *ppos)
+{
+	char *ptr = page;
+	if (*ppos)  // CMD call again
+		return 0;
+	
+	printk("byr_: %s, charger_limit = %s\n", __func__, charger_limit);
+
+	ptr += sprintf(ptr, "%s\n", charger_limit);
+
+	*ppos += ptr - page;
+	return (ptr - page);
+}
+
+static ssize_t charger_limit_write_proc(struct file *file, const char __user *buff, size_t size, loff_t *ppos)
+{
+	char wtire_data[8] = {0};
+		
+	if (size >= 32)
+		return -EFAULT;
+
+	if (copy_from_user( &wtire_data, buff, size ))
+		return -EFAULT;
+	if (wtire_data[0] == '0'){
+		memset(charger_limit,0,8) ;
+		
+		printk("byr_: %s, set 0  charger_limit = %s\n", __func__, charger_limit);
+	}else{
+		memcpy(charger_limit,wtire_data,8);
+	}
+
+		limit_capacity = (int)simple_strtol(charger_limit,NULL,10);
+		
+	printk("byr_: %s, charger_limit = %s\n", __func__, charger_limit);
+	
+	printk("byr_: %s, capacity = %d\n", __func__, limit_capacity);
+
+	return size;
+}
+
+static const struct file_operations charger_limit_proc_ops = {
+    .read = charger_limit_read_proc,
+    .write = charger_limit_write_proc,
+};
+
+
+static int init_proc_charger_limit(void)
+{
+	int ret =0 ;
+	
+	limit_enbale_entry = proc_create(CHARGER_LIMIT_EN_PROC_FILE, 0666, NULL, &charger_limit_enbale_proc_ops);
+
+	if (limit_enbale_entry == NULL)
+	{
+		printk("create_proc_entry %s failed\n", CHARGER_LIMIT_EN_PROC_FILE);
+		return -ENOMEM;
+	}
+	else
+	{
+		printk("create proc entry %s success", CHARGER_LIMIT_EN_PROC_FILE);
+		ret = 0;
+	}
+	limit_entry = proc_create(CHARGER_LIMIT_PROC_FILE, 0666, NULL, &charger_limit_proc_ops);
+
+	if (limit_entry == NULL)
+	{
+		printk("create_proc_entry %s failed\n", CHARGER_LIMIT_PROC_FILE);
+		return -ENOMEM;
+	}
+	else
+	{
+		printk("create proc entry %s success", CHARGER_LIMIT_PROC_FILE);
+		ret = 0;
+	}
+	return ret;
+}
+
+
+static void remove_proc_charger_limit(void)
+{
+	proc_remove(limit_enbale_entry);
+	printk("remove_proc %s \n", CHARGER_LIMIT_EN_PROC_FILE);
+	proc_remove(limit_entry);
+	printk("remove_proc %s \n", CHARGER_LIMIT_EN_PROC_FILE);
+
+}
+
+static void charge_limit_work(struct work_struct *work)
+{
+		struct fg_chip *chip = container_of(work,
+				struct fg_chip,
+				charge_limit.work);
+		
+	int capacity = get_prop_capacity(chip);
+	int limit_capacity_high,limit_capacity_low;
+	static int limit_timer_ct = 0; 
+
+	printk("byr__ %s charge_limit_work  \n",__func__);
+	
+	limit_capacity_high = limit_capacity;
+	limit_capacity_low = limit_capacity_high - 5;
+
+	if(capacity >= limit_capacity_high ){
+//		if(0 == charge_disable){
+			fg_smbchg_charging_en(0);
+			charge_disable = 1;
+			printk("fg_smbchg_charging_en(0) charge_disable= %d \n",charge_disable);
+//		}
+
+	}else if (capacity <= limit_capacity_low){
+		if(1 == charge_disable){
+			fg_smbchg_charging_en(1);
+			charge_disable = 0;
+			printk("fg_smbchg_charging_en(1)charge_disable= %d \n",charge_disable);
+		}
+	}
+
+	schedule_delayed_work(&limit_chip->charge_limit,msecs_to_jiffies(CHARGE_LIMIT_DELAY_MS));
+		
+	printk("byr_: %s,  schedule_delayed_work /charge limit/  start num = %d!! \n", __func__,limit_timer_ct);
+	
+	limit_timer_ct ++;
+}
+/*byr add demo app charging limit end 2017.3.20 */
+
 
 #define BATT_TEMP_OFFSET	3
 #define BATT_TEMP_CNTRL_MASK	0x17
@@ -2695,6 +2940,218 @@ out:
 #define TEMP_PERIOD_TIMEOUT_MS		3000
 #define BATT_TEMP_LOW_LIMIT		-600
 #define BATT_TEMP_HIGH_LIMIT		1500
+
+
+/*jiahao add for usb connector state debug @2017-05-22 start*/
+#ifdef USB_CONNECTOR_STATE_DEBUG
+#define USB_CONNECTOR_TEMP_HOT 80
+#define USB_CONNECTOR_TEMP_WARM 60
+struct switch_dev usb_connector_dev;
+static bool is_charger_available(struct fg_chip *chip);
+
+static int set_prop_enable_charging_dependon_usb_connector_state(struct fg_chip *chip, int state)
+{
+	int rc = 0;
+	union power_supply_propval ret = {!state, };
+
+	if (!is_charger_available(chip)) {
+		pr_err("Charger not available yet!\n");
+		return -EINVAL;
+	}
+
+	rc = chip->batt_psy->set_property(chip->batt_psy,
+			POWER_SUPPLY_PROP_CHARGING_ENABLED,
+			&ret);
+	if (rc) {
+		pr_err("couldn't configure batt chg %d\n", rc);
+		return rc;
+	}
+
+	chip->charging_disabled = state;
+	if (fg_debug_mask & FG_STATUS)
+		pr_info("[USB_STATE] %sabling charging\n", state ? "dis" : "en");
+
+	return rc;
+}
+
+
+static int create_usb_connector(void)
+{
+	int ret;
+
+        usb_connector_dev.name = "usb_connector";
+        usb_connector_dev.state = 0;
+
+        ret = switch_dev_register(&usb_connector_dev);
+
+	if (ret < 0)
+	{
+		pr_err("[USB_STATE] create usb_connector device fail\n");
+		return ret;
+	}
+	return 0;
+}
+
+static int update_usb_connector_state(struct fg_chip *chip)
+{
+
+        static int state;
+	int ret;
+        struct thermal_zone_device *usb_connector_device;
+        long temperature;
+
+        usb_connector_device = thermal_zone_get_zone_by_name("pa_therm1");
+	ret = thermal_zone_get_temp(usb_connector_device, &temperature);
+
+
+	pr_info("[USB_STATE] the usb connector temperature is %ld\n", temperature);
+        if (ret)
+	{
+		pr_err("[USB_STATE] get thermal zone temperature fail\n");
+		return ret;
+	}
+
+	if(temperature > USB_CONNECTOR_TEMP_HOT)
+	{
+		if(state == 0)
+		{
+			state = 1;
+			pr_info("[USB_STATE] the first time temperature getting hot, need set the state to %d\n", state);
+		}
+		else
+			pr_info("[USB_STATE] the temperature is hot, already set the state to %d, no need to set again\n", state);
+	}
+	else if((temperature <= USB_CONNECTOR_TEMP_HOT) && (temperature > USB_CONNECTOR_TEMP_WARM))
+	{
+		if(state == 1)
+			pr_info("[USB_STATE] the temperature is decreasing from hot, need keep the state to %d\n", state);
+		else
+			pr_info("[USB_STATE] the temperature is warm, no need to set the state\n");
+	}
+	else if(temperature <= USB_CONNECTOR_TEMP_WARM)
+	{
+		if(state == 1)
+		{
+			state = 0;
+			pr_info("[USB_STATE] the temperature is decreasing to normal, need set the state to %d\n", state);
+		}
+		else
+			pr_info("[USB_STATE] the temperature is normal, no need to set the state\n");
+	}
+
+	set_prop_enable_charging_dependon_usb_connector_state(chip, state);
+	switch_set_state(&usb_connector_dev, state);
+
+        return 0;
+}
+
+#endif
+/*jiahao add for usb connector state debug @2017-05-22 end*/
+
+#ifdef SW_JEITA_TANGJUN
+static void sw_jeita_tangjun(struct fg_chip *chip)
+{
+	int rc = 0;
+	static enum sw_jeita_status jeita_status = SWJEITA_MAX;
+	enum sw_jeita_status last_jeita_status = SWJEITA_MAX;
+
+        /*******************************************
+        Temp(.C)        Voltage(V)      Current(mA)
+        T < 0           4.18            0
+        0 <= T < 10     4.38            1400
+        10 <= T < 20    4.38            2000
+        20 <= T < 50    4.18            2000
+        20 <= T < 50    4.38            1400
+        50 <= T < 60    4.08            2000
+        T >= 60         3.98            0
+        *******************************************/
+        pr_info("Tangjun BATT_TEMP %d BATT_VOLTAGE %d BATT_CURRENT %d\n", fg_data[0].value, fg_data[2].value, fg_data[3].value); //DEBUG
+
+        last_jeita_status = jeita_status;
+
+        if((fg_data[0].value < BATT_SW_JEITA_COLD) || (fg_data[0].value >= BATT_SW_JEITA_HOT)) {
+                jeita_status = SWJEITA_MAX;
+        }
+        else if(fg_data[0].value < BATT_SW_JEITA_COOL) {
+                jeita_status = SWJEITA_LOW_TEMP;
+        }
+        else if(fg_data[0].value < BATT_SW_JEITA_NORMAL) {
+                jeita_status = SWJEITA_QUICK_LOW_TEMP;
+        }
+        else if(fg_data[0].value < BATT_SW_JEITA_WARM) {
+                if((fg_data[FG_DATA_VOLTAGE].value >= 4160000)||(true == vbat_is_over_4180mv)) {
+                        jeita_status = SWJEITA_QUICK_NOR_TEMP_HIGH_VOL;
+                }
+                else {
+                        jeita_status = SWJEITA_QUICK_NOR_TEMP_LOW_VOL;
+                }
+        }
+        else {
+                jeita_status = SWJEITA_HIGH_TEMP;
+        }
+
+	switch(jeita_status) {
+		case SWJEITA_LOW_TEMP:
+			//Nothing
+			break;
+		case SWJEITA_QUICK_LOW_TEMP:
+			if((SWJEITA_QUICK_NOR_TEMP_LOW_VOL == last_jeita_status) || (SWJEITA_QUICK_NOR_TEMP_HIGH_VOL == last_jeita_status)) {
+				jeita_status = (fg_data[0].value < BATT_SW_JEITA_NORM_COOL)?(jeita_status):(last_jeita_status);
+				pr_info("Tangjun 0 last is %d, jeita_status %d\n", last_jeita_status, jeita_status);
+			}
+			break;
+		case SWJEITA_QUICK_NOR_TEMP_LOW_VOL:
+			if(SWJEITA_QUICK_NOR_TEMP_HIGH_VOL == last_jeita_status) {
+				jeita_status = (fg_data[FG_DATA_VOLTAGE].value < 4120000)?(jeita_status):(last_jeita_status);
+				pr_info("Tangjun 1 last is %d, jeita_status %d\n", last_jeita_status, jeita_status);
+			}
+			else if(SWJEITA_HIGH_TEMP == last_jeita_status) {
+				jeita_status = (fg_data[0].value < BATT_SW_JEITA_WARM_NORM)?(jeita_status):(last_jeita_status);
+				pr_info("Tangjun 2 last is %d, jeita_status %d\n", last_jeita_status, jeita_status);
+			}
+			break;
+		case SWJEITA_QUICK_NOR_TEMP_HIGH_VOL:
+			if(SWJEITA_HIGH_TEMP == last_jeita_status) {
+				jeita_status = (fg_data[0].value < BATT_SW_JEITA_WARM_NORM)?(jeita_status):(last_jeita_status);
+				pr_info("Tangjun 3 last is %d, jeita_status %d\n", last_jeita_status, jeita_status);
+			}
+			break;
+		case SWJEITA_HIGH_TEMP:
+			//Nothing
+			break;
+		default:
+			//Nothing
+			break;
+	}
+
+	if(last_jeita_status != jeita_status) {
+		pr_info("Tangjun last is %d, jeita_status %d\n", last_jeita_status, jeita_status);
+	}
+	switch(jeita_status) {
+		case SWJEITA_LOW_TEMP:
+			rc = set_prop_sw_jeita_vol_cur(chip, 4380, 1400); //0-10C         4.38V/1.4A
+			break;
+		case SWJEITA_QUICK_LOW_TEMP:
+			rc = set_prop_sw_jeita_vol_cur(chip, 4380, 2000); //10-20C        4.38V/2.0A
+			break;
+		case SWJEITA_QUICK_NOR_TEMP_LOW_VOL:
+			rc = set_prop_sw_jeita_vol_cur(chip, 4180, 2000); //20-50C<4.18V  2.0A
+			break;
+		case SWJEITA_QUICK_NOR_TEMP_HIGH_VOL:
+			rc = set_prop_sw_jeita_vol_cur(chip, 4380, 1400); //20-50C>4.18V  1.4A
+			break;
+		case SWJEITA_HIGH_TEMP:
+			rc = set_prop_sw_jeita_vol_cur(chip, 4080, 2000); //50-60C        4.08V/2.0A
+			break;
+		default:
+			//HW JEITA will processing
+			break;
+	}
+	if(rc != 0)
+		jeita_status = last_jeita_status;
+}
+#endif
+
 static void update_temp_data(struct work_struct *work)
 {
 	s16 temp;
@@ -2704,11 +3161,18 @@ static void update_temp_data(struct work_struct *work)
 	struct fg_chip *chip = container_of(work,
 				struct fg_chip,
 				update_temp_work.work);
+	static enum slope_limit_status otg_status = LOW_TEMP_CHARGE;
+	enum slope_limit_status last_otg_status = LOW_TEMP_CHARGE;
 
 	if (chip->fg_restarting)
 		goto resched;
 
 	fg_stay_awake(&chip->update_temp_wakeup_source);
+/*jiahao add for usb connector state debug @2017-05-22 start*/
+#ifdef USB_CONNECTOR_STATE_DEBUG
+	update_usb_connector_state(chip);
+#endif
+/*jiahao add for usb connector state debug @2017-05-22 end*/
 	if (chip->sw_rbias_ctrl) {
 		rc = fg_mem_masked_write(chip, EXTERNAL_SENSE_SELECT,
 				BATT_TEMP_CNTRL_MASK,
@@ -2774,8 +3238,23 @@ wait:
 		}
 	}
 
+	//pr_info("Tangjun BATT_TEMP %d\n", fg_data[0].value);
 	if (fg_debug_mask & FG_MEM_DEBUG_READS)
 		pr_info("BATT_TEMP %d %d\n", temp, fg_data[0].value);
+
+	/* OTG charging High Temperature Protection. */
+	last_otg_status = otg_status;
+	otg_status = (fg_data[0].value >= 480)?(HIGH_TEMP_CHARGE):(LOW_TEMP_CHARGE);
+	if(last_otg_status != otg_status) {
+		pr_info("Tangjun OTG Change Current, BATT_TEMP %d %d\n", temp, fg_data[0].value);
+		asus_limit_otg_current((HIGH_TEMP_CHARGE == otg_status)?(true):(false));
+	}
+
+	if (fg_data[0].value >= 640) {
+		pr_info("Tangjun BATT_TEMP Touch 65C %d\n", fg_data[0].value);
+		if (chip->power_supply_registered)
+			power_supply_changed(&chip->bms_psy);
+	}
 
 	get_current_time(&chip->last_temp_update_time);
 
@@ -2832,6 +3311,8 @@ static int fg_set_resume_soc(struct fg_chip *chip, u8 threshold)
 		pr_err("write failed rc=%d\n", rc);
 	else
 		pr_debug("setting resume-soc to %x\n", threshold);
+		printk("byr_chrg setting resume-soc to %x\n", threshold);
+	
 
 	return rc;
 }
@@ -3921,6 +4402,41 @@ static int set_prop_enable_charging(struct fg_chip *chip, bool enable)
 	return rc;
 }
 
+#ifdef SW_JEITA_TANGJUN
+static int set_prop_sw_jeita_vol_cur(struct fg_chip *chip, int vol_mv, int cur_ma)
+{
+	int rc = 0;
+	union power_supply_propval prop = {0, };
+
+	if (!is_charger_available(chip)) {
+		pr_err("Tangjun Charger not available yet!\n");
+		return -EINVAL;
+	}
+
+	chip->batt_psy->get_property(chip->batt_psy,
+			POWER_SUPPLY_PROP_VOLTAGE_MAX, &prop);
+	pr_err("Tangjun GET VOLTAGE MAX %d SET VOLTAGE MAX %d \n", prop.intval, vol_mv);
+	if ((prop.intval != vol_mv)) {
+		prop.intval = vol_mv;
+		rc = chip->batt_psy->set_property(chip->batt_psy,
+			POWER_SUPPLY_PROP_VOLTAGE_MAX, &prop);
+		if (rc) {
+			pr_err("Tangjun couldn't configure batt chg voltage max %d\n", rc);
+			return rc;
+		}
+	}
+
+	prop.intval = cur_ma;
+	rc = chip->batt_psy->set_property(chip->batt_psy,
+		POWER_SUPPLY_PROP_INPUT_CURRENT_MAX, &prop);
+	if (rc) {
+		pr_err("Tangjun couldn't configure batt chg current max %d\n", rc);
+		return rc;
+	}
+	return rc;
+}
+#endif
+
 #define MAX_BATTERY_CC_SOC_CAPACITY		150
 static void status_change_work(struct work_struct *work)
 {
@@ -4477,6 +4993,18 @@ static int fg_power_get_property(struct power_supply *psy,
 		break;
 	case POWER_SUPPLY_PROP_CAPACITY:
 		val->intval = get_prop_capacity(chip);
+        	pr_info("Tangjun CAPACITY %d\n", val->intval); //DEBUG
+#if 0
+		/* ASUS-334 3.6V should not be shut down Tangjun */
+		if(1 > val->intval) {
+			if(get_sram_prop_now(chip, FG_DATA_VOLTAGE) > 3480000) {
+				val->intval = 1;
+				pr_info("Tangjun CAPACITY Adjust to 1,Voltage is %d\n", fg_data[FG_DATA_VOLTAGE].value); //DEBUG
+			} else {
+		                val->intval = 0;
+			}
+		}
+#endif
 		break;
 	case POWER_SUPPLY_PROP_CAPACITY_RAW:
 		val->intval = get_sram_prop_now(chip, FG_DATA_BATT_SOC);
@@ -4584,8 +5112,9 @@ static int fg_power_set_property(struct power_supply *psy,
 		rc = set_prop_jeita_temp(chip, FG_MEM_SOFT_HOT, val->intval);
 		break;
 	case POWER_SUPPLY_PROP_UPDATE_NOW:
-		if (val->intval)
+		if (val->intval) {
 			update_sram_data(chip, &unused);
+		}
 		break;
 	case POWER_SUPPLY_PROP_IGNORE_FALSE_NEGATIVE_ISENSE:
 		rc = set_prop_ignore_false_negative_isense(chip, !!val->intval);
@@ -5133,6 +5662,7 @@ static irqreturn_t fg_vbatt_low_handler(int irq, void *_chip)
 	if (fg_debug_mask & FG_IRQS)
 		pr_info("vbatt-low triggered\n");
 
+	pr_err("Tangjun\n"); //DEBUG
 	/* handle empty soc based on vbatt-low interrupt */
 	if (chip->use_vbat_low_empty_soc) {
 		if (fg_get_vbatt_status(chip, &vbatt_low_sts))
@@ -5242,6 +5772,7 @@ static irqreturn_t fg_soc_irq_handler(int irq, void *_chip)
 	u8 soc_rt_sts;
 	int rc, msoc;
 
+	pr_err("Tangjun\n"); //DEBUG
 	rc = fg_read(chip, &soc_rt_sts, INT_RT_STS(chip->soc_base), 1);
 	if (rc) {
 		pr_err("spmi read failed: addr=%03X, rc=%d\n",
@@ -5326,6 +5857,7 @@ static irqreturn_t fg_empty_soc_irq_handler(int irq, void *_chip)
 	u8 soc_rt_sts;
 	int rc;
 
+	pr_err("Tangjun\n"); //DEBUG
 	rc = fg_read(chip, &soc_rt_sts, INT_RT_STS(chip->soc_base), 1);
 	if (rc) {
 		pr_err("spmi read failed: addr=%03X, rc=%d\n",
@@ -5713,6 +6245,9 @@ static int update_chg_iterm(struct fg_chip *chip)
 	data[0] = cpu_to_le16(converted_current_raw) & 0xFF;
 	data[1] = cpu_to_le16(converted_current_raw) >> 8;
 
+
+	printk("byr_chrg %s current = %lld, converted_raw = %04x, data = %02x %02x\n",
+			__func__,current_ma, converted_current_raw, data[0], data[1]);
 	if (fg_debug_mask & FG_STATUS)
 		pr_info("current = %lld, converted_raw = %04x, data = %02x %02x\n",
 			current_ma, converted_current_raw, data[0], data[1]);
@@ -6195,6 +6730,26 @@ fail:
 #define THERMAL_COEFF_ADDR		0x444
 #define THERMAL_COEFF_OFFSET		0x2
 #define BATTERY_PSY_WAIT_MS		2000
+
+ssize_t battery_print_name(struct switch_dev *sdev,char *buf)
+{
+	return sprintf(buf,"%s\n",battery_name.battery_name_type);
+}
+static int battery_switch_register(void)
+{
+	int ret;
+	battery_name.battery_switch_dev.name="battery";
+	battery_name.battery_switch_dev.print_name=battery_print_name;
+	ret = switch_dev_register(&battery_name.battery_switch_dev);
+	if(ret<0)
+		return ret;
+	battery_name.battery_switch_dev.state=0;
+	switch_set_state(&battery_name.battery_switch_dev,
+		battery_name.battery_switch_dev.state);
+	return 0;
+}
+
+
 static int fg_batt_profile_init(struct fg_chip *chip)
 {
 	int rc = 0, ret;
@@ -6243,8 +6798,17 @@ wait:
 	if (fg_debug_mask & FG_STATUS)
 		pr_info("battery id = %d\n",
 				get_sram_prop_now(chip, FG_DATA_BATT_ID));
-	profile_node = of_batterydata_get_best_profile(batt_node, "bms",
-							fg_batt_type);
+	/* Tangjun Fixed for QL1516&QL1526 as the same ID ^*^ */
+	#if defined PROJECT_QL1516
+	pr_err("FG Tangjun Load QL1516 battery \n");
+	profile_node = of_batterydata_get_best_profile(batt_node, "bms", "C11P1612-O-01-0001-14.2016.1703.120");
+	#elif defined PROJECT_QL1526
+	pr_err("FG Tangjun Load QL1526 battery \n");
+	profile_node = of_batterydata_get_best_profile(batt_node, "bms", "C11P1609-O-01-0001-14.2016.1703.120");
+	#else
+	profile_node = of_batterydata_get_best_profile(batt_node, "bms", fg_batt_type);
+	#endif
+
 	if (IS_ERR_OR_NULL(profile_node)) {
 		rc = PTR_ERR(profile_node);
 		if (rc == -EPROBE_DEFER) {
@@ -6322,7 +6886,8 @@ wait:
 		rc = 0;
 		goto no_profile;
 	}
-
+	strcpy(battery_name.battery_name_type,batt_type_str);
+	battery_switch_register();
 	if (!chip->batt_profile)
 		chip->batt_profile = devm_kzalloc(chip->dev,
 				sizeof(char) * len, GFP_KERNEL);
@@ -7353,7 +7918,8 @@ static void fg_cancel_all_works(struct fg_chip *chip)
 	cancel_delayed_work_sync(&chip->update_temp_work);
 	cancel_delayed_work_sync(&chip->update_jeita_setting);
 	cancel_delayed_work_sync(&chip->check_empty_work);
-	cancel_delayed_work_sync(&chip->batt_profile_init);
+	cancel_delayed_work_sync(&chip->batt_profile_init);	
+	cancel_delayed_work_sync(&chip->charge_limit);
 	alarm_try_to_cancel(&chip->fg_cap_learning_alarm);
 	alarm_try_to_cancel(&chip->hard_jeita_alarm);
 	if (!chip->ima_error_handling)
@@ -7408,6 +7974,8 @@ static int fg_remove(struct spmi_device *spmi)
 
 	fg_cleanup(chip);
 	dev_set_drvdata(&spmi->dev, NULL);
+	remove_proc_charger_limit();
+	
 	return 0;
 }
 
@@ -7926,10 +8494,15 @@ static int fg_common_hw_init(struct fg_chip *chip)
 			return rc;
 		}
 	}
-
+#if 0
 	rc = fg_mem_masked_write(chip, settings[FG_MEM_DELTA_SOC].address, 0xFF,
 			soc_to_setpoint(settings[FG_MEM_DELTA_SOC].value),
 			settings[FG_MEM_DELTA_SOC].offset);
+#else
+	rc = fg_mem_masked_write(chip, settings[FG_MEM_DELTA_SOC].address, 0xFF,
+			settings[FG_MEM_DELTA_SOC].value,
+			settings[FG_MEM_DELTA_SOC].offset);
+#endif
 	if (rc) {
 		pr_err("failed to write delta soc rc=%d\n", rc);
 		return rc;
@@ -8582,7 +9155,8 @@ static int fg_probe(struct spmi_device *spmi)
 		pr_err("Can't allocate fg_chip\n");
 		return -ENOMEM;
 	}
-
+	limit_chip = chip;
+	
 	chip->spmi = spmi;
 	chip->dev = &(spmi->dev);
 
@@ -8627,6 +9201,7 @@ static int fg_probe(struct spmi_device *spmi)
 	INIT_DELAYED_WORK(&chip->check_empty_work, check_empty_work);
 	INIT_DELAYED_WORK(&chip->batt_profile_init, batt_profile_init);
 	INIT_DELAYED_WORK(&chip->check_sanity_work, check_sanity_work);
+	INIT_DELAYED_WORK(&chip->charge_limit, charge_limit_work);   //byr add 2017.3.20
 	INIT_WORK(&chip->ima_error_recovery_work, ima_error_recovery_work);
 	INIT_WORK(&chip->rslow_comp_work, rslow_comp_work);
 	INIT_WORK(&chip->fg_cap_learning_work, fg_cap_learning_work);
@@ -8800,7 +9375,13 @@ static int fg_probe(struct spmi_device *spmi)
 		chip->revision[DIG_MAJOR], chip->revision[DIG_MINOR],
 		chip->revision[ANA_MAJOR], chip->revision[ANA_MINOR],
 		chip->pmic_subtype);
-
+	
+	init_proc_charger_limit();	//byr add for demo app
+/*jiahao add for usb connector state debug @2017-05-22 start*/
+#ifdef USB_CONNECTOR_STATE_DEBUG
+	create_usb_connector();
+#endif
+/*jiahao add for usb connector state debug @2017-05-22 end*/
 	return rc;
 
 power_supply_unregister:

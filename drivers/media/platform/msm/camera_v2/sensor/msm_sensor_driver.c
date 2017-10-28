@@ -17,6 +17,7 @@
 #include "camera.h"
 #include "msm_cci.h"
 #include "msm_camera_dt_util.h"
+#include <linux/hqsysfs.h>
 
 /* Logging macro */
 #undef CDBG
@@ -26,6 +27,11 @@
 
 static struct v4l2_file_operations msm_sensor_v4l2_subdev_fops;
 static int32_t msm_sensor_driver_platform_probe(struct platform_device *pdev);
+
+//yinyapeng add for eeprom 
+bool IsHi556Mount = false;
+bool IsHi846Mount = false;
+
 
 /* Static declaration */
 static struct msm_sensor_ctrl_t *g_sctrl[MAX_CAMERAS];
@@ -916,6 +922,16 @@ CSID_TG:
 	}
 
 	pr_err("%s probe succeeded", slave_info->sensor_name);
+
+/*yinyapeng add for hi556 and hi846 otp 20170617 */
+    if (!strcmp(slave_info->sensor_name,"hi556")) {          
+          IsHi556Mount = true; 
+    } 
+    
+    if (!strcmp(slave_info->sensor_name,"hi846")) {
+          IsHi846Mount = true; 
+    } 
+/**yinyapeng add end**/
 
 	/*
 	 * Update the subdevice id of flash-src based on availability in kernel.

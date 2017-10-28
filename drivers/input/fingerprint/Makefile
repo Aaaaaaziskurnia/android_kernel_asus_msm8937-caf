@@ -1,0 +1,1 @@
+obj-$(CONFIG_FINGERPRINT_FOCALTECH_FT9338) += focaltech/

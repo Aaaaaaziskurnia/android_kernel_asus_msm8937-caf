@@ -1,0 +1,4 @@
+config FINGERPRINT_FOCALTECH_FT9338
+	tristate "Focaltech FT9338/FT9336 fingerprint drvier support"
+	help
+	  Say Y here to enable focaltech fingerprint driver support!  

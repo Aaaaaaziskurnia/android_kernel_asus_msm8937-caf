@@ -1,0 +1,21 @@
+#
+# Touchscreen driver configuration
+#
+menuconfig INPUT_FINGERPRINT
+	bool "Fingerprint"
+	help
+	  Say Y here, and a list of supported fingerprint will be displayed.
+	  This option doesn't affect the kernel.
+
+	  If unsure, say Y.
+
+if INPUT_TOUCHSCREEN
+
+config FINGERPRINT_FOCALTECH_FT9338
+	bool "FINGERPRINT_FOCALTECH_FT9338 for Qualcomm package"
+	help
+	  Say Y here if you have a focaltech fingerprint.
+
+          If unsure, say N.
+
+endif

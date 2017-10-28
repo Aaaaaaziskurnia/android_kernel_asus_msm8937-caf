@@ -11,6 +11,13 @@ menuconfig INPUT_FINGERPRINT
 
 if INPUT_TOUCHSCREEN
 
+config GOODIX_FP
+	bool "GOODIX_FP for Qualcomm package"
+	help
+	  Say Y here if you have a goodix fingerprint.
+
+          If unsure, say N.
+
 config FINGERPRINT_FOCALTECH_FT9338
 	bool "FINGERPRINT_FOCALTECH_FT9338 for Qualcomm package"
 	help

@@ -44,6 +44,7 @@
 #include <linux/fb.h>
 #include <linux/pm_qos.h>
 #include <linux/cpufreq.h>
+#include <linux/sched.h>
 
 #include "gf_spi.h"
 
@@ -102,7 +103,13 @@ static LIST_HEAD(device_list);
 static DEFINE_MUTEX(device_list_lock);
 static struct gf_dev gf;
 static struct class *gf_class;
-static int driver_init_partial(struct gf_dev *gf_dev); 
+static int driver_init_partial(struct gf_dev *gf_dev);
+
+static int boost_flag;
+static int gf_suspend(struct platform_device *pdev);
+static int gf_resume(struct platform_device *pdev);
+
+
 
 static void gf_enable_irq(struct gf_dev *gf_dev)
 {
@@ -413,9 +420,6 @@ static irqreturn_t gf_irq(int irq, void *handle)
 #if defined(GF_NETLINK_ENABLE)
 
 	char temp = GF_NET_EVENT_IRQ;
-	gf_dbg("enter irq %s\n",__func__); 
-
-	
 	
 	sendnlmsg(&temp);
 #elif defined (GF_FASYNC)
@@ -423,6 +427,14 @@ static irqreturn_t gf_irq(int irq, void *handle)
 	if (gf_dev->async)
 		kill_fasync(&gf_dev->async, SIGIO, POLL_IN);
 #endif
+
+	pr_info("enter irq %s,boost_flag = %d\n",__func__,boost_flag);
+	if(boost_flag == 1)
+	{
+		pr_info("sched_set_boost value :1\n");
+		sched_set_boost(1);
+	}
+
 
 	return IRQ_HANDLED;
 
@@ -456,7 +468,7 @@ static int driver_init_partial(struct gf_dev *gf_dev)
 		gf_disable_irq(gf_dev);
 	}
 	
-        gf_hw_reset(gf_dev, 360);
+        gf_hw_reset(gf_dev, 5);
 	
 	FUNC_EXIT();
 	return 0;
@@ -595,6 +607,7 @@ static int goodix_fb_state_chg_callback(struct notifier_block *nb,
 		case FB_BLANK_POWERDOWN:
 			if (gf_dev->device_available == 1) {
 				gf_dev->fb_black = 1;
+		gf_suspend(gf_dev->spi);
 #if defined(GF_NETLINK_ENABLE)
                                 temp = GF_NET_EVENT_FB_BLACK;
                                 sendnlmsg(&temp);
@@ -611,6 +624,7 @@ static int goodix_fb_state_chg_callback(struct notifier_block *nb,
                 case FB_BLANK_UNBLANK:
                         if (gf_dev->device_available == 1) {
                             gf_dev->fb_black = 0;
+						gf_resume(gf_dev->spi);
 #if defined(GF_NETLINK_ENABLE)
                             temp = GF_NET_EVENT_FB_UNBLACK;
                             sendnlmsg(&temp);
@@ -764,6 +778,7 @@ static int gf_probe(struct platform_device *pdev)
 		
 	}
 
+	boost_flag = 0;
 	pr_warn("--------gf_probe end---OK.--------\n");
 	return status;
 
@@ -801,6 +816,7 @@ static int gf_remove(struct platform_device *pdev)
 	struct gf_dev *gf_dev = &gf;
 	FUNC_ENTRY();
 
+
 	/* make sure ops on existing fds can abort cleanly */
 	if (gf_dev->irq)
 		free_irq(gf_dev->irq, gf_dev);
@@ -826,9 +842,9 @@ static int gf_remove(struct platform_device *pdev)
 }
 
 #if defined(USE_SPI_BUS)
-static int gf_suspend(struct spi_device *spi, pm_message_t mesg)
+static int gf_suspend(struct spi_device *spi)
 #elif defined(USE_PLATFORM_BUS)
-static int gf_suspend(struct platform_device *pdev, pm_message_t state)
+static int gf_suspend(struct platform_device *pdev)
 #endif
 {
 #if 0//defined(USE_SPI_BUS)
@@ -840,7 +856,8 @@ static int gf_suspend(struct platform_device *pdev, pm_message_t state)
 	gfspi_ioctl_clk_disable(gfspi_device);
 #endif
 
-	gf_dbg( "gf_suspend_test.\n");
+	boost_flag = 1;
+	pr_info( "gf_suspend_test.\n");
 	return 0;
 }
 
@@ -858,7 +875,13 @@ static int gf_resume(struct platform_device *pdev)
 	gfspi_device = spi_get_drvdata(spi);
 	gfspi_ioctl_clk_enable(gfspi_device);
 #endif
-	gf_dbg( "gf_resume_test.\n");
+	if(boost_flag == 1)
+	{
+		sched_set_boost(0);
+		boost_flag = 0;
+		pr_info("sched_set_boost value 0\n");
+	}
+	pr_info( "gf_resume_test.\n");
 	return 0;
 }
 
@@ -882,8 +905,6 @@ static struct platform_driver gf_driver = {
 		   },
 	.probe = gf_probe,
 	.remove = gf_remove,
-	.suspend = gf_suspend,
-	.resume = gf_resume,
 };
 
 static int __init gf_init(void)

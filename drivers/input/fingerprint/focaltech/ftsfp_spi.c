@@ -44,6 +44,7 @@
 #include <linux/fb.h>
 #include <linux/pm_qos.h>
 #include <linux/cpufreq.h>
+#include <linux/sched.h>
 
 #include "ftsfp_spi.h"
 
@@ -65,6 +66,7 @@
 #define N_SPI_MINORS            32  /* ... up to 256 */
 
 static int fp_get_io_resource(void);
+static int boost_flag;
 
 struct ftsfp_key_map_ft key_map_ft[] =
 {
@@ -469,6 +471,14 @@ static irqreturn_t ftsfp_irq (int irq, void *handle)
 
     envp[0] = "FOCAL=fingeron";     
     envp[1] = NULL;
+
+	ftsfp_dbg("enter irq %s,boost_flag = %d\n",__func__,boost_flag);
+	if(boost_flag == 1)
+	{
+		ftsfp_dbg("sched_set_boost value :1\n");
+		sched_set_boost(1);
+	}
+
 	wake_lock_timeout(&ftsfp_dev->fts_wlock, msecs_to_jiffies(1000));
     kobject_uevent_env(&ftsfp_dev->spi->dev.kobj, KOBJ_CHANGE, envp);
 #endif
@@ -657,7 +667,10 @@ static int ftsfp_fb_state_chg_callback (struct notifier_block *nb,
         {
             case FB_BLANK_POWERDOWN:
                 ftsfp_dbg ("%s : FB_BLANK_POWERDOWN\n", __func__);
-                if (ftsfp_dev->device_available == 1)
+
+				boost_flag = 1;
+
+				if (ftsfp_dev->device_available == 1)
                 {
 						ftsfp_dev->fb_black = 1;
 						ftsfp_screen_detect(0);
@@ -677,6 +690,14 @@ static int ftsfp_fb_state_chg_callback (struct notifier_block *nb,
 
             case FB_BLANK_UNBLANK:
                 ftsfp_dbg ("%s : FB_BLANK_UNBLANK\n", __func__);
+
+				if(boost_flag == 1)
+				{
+					sched_set_boost(0);
+					boost_flag = 0;
+					ftsfp_dbg("sched_set_boost value 0\n");
+				}
+
                 if (ftsfp_dev->device_available == 1)
                 {
                     ftsfp_dev->fb_black = 0;

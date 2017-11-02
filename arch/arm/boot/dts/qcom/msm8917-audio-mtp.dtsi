@@ -15,6 +15,32 @@
 	status = "okay";
 	qcom,model = "msm8952-snd-card-mtp";
 	qcom,msm-hs-micbias-type = "external";
+
+	qcom,audio-routing =
+		"RX_BIAS", "MCLK",
+		"SPK_RX_BIAS", "MCLK",
+		"INT_LDO_H", "MCLK",
+		"MIC BIAS External", "Handset Mic",
+		"MIC BIAS External2", "Headset Mic",
+		"MIC BIAS External", "Secondary Mic",
+		"AMIC1", "MIC BIAS External",
+		"AMIC2", "MIC BIAS External2",
+		"AMIC3", "MIC BIAS External";
+
+	qcom,cdc-us-euro-gpios;
+	qcom,msm-gpios =
+		"pri_i2s";
+	qcom,pinctrl-names =
+		"all_off",
+		"pri_i2s_act";
+	pinctrl-names =
+		"all_off",
+		"pri_i2s_act";
+
+	pinctrl-0 = <&cdc_pdm_lines_sus &cdc_pdm_lines_2_sus>;
+	pinctrl-1 = <&cdc_pdm_lines_act &cdc_pdm_lines_2_act>;
+	pinctrl-2;pinctrl-3;pinctrl-4;pinctrl-5;pinctrl-6;pinctrl-7;
+
 };
 
 &pm8937_cajon_dig {
@@ -26,17 +52,17 @@
 };
 
 &wsa881x_i2c_e {
-	status = "okay";
+	status = "disabled";
 };
 
 &wsa881x_i2c_44 {
-	status = "okay";
+	status = "disabled";
 };
 
 &wsa881x_i2c_f {
-	status = "okay";
+	status = "disabled";
 };
 
 &wsa881x_i2c_45 {
-	status = "okay";
+	status = "disabled";
 };

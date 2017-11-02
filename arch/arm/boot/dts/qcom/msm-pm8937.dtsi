@@ -40,6 +40,10 @@
 				qcom,pon-type = <0>;
 				qcom,pull-up = <1>;
 				linux,code = <116>;
+				qcom,support-reset = <0>;
+				qcom,s1-timer = <10256>;
+				qcom,s2-timer = <0>;
+			    qcom,s2-type = <4>;
 			};
 
 			qcom,pon_2 {
@@ -310,9 +314,9 @@
 
 			chan@13 {
 				label = "case_therm";
-				reg = <0x13>;
-				qcom,decimation = <0>;
-				qcom,pre-div-channel-scaling = <0>;
+ 				reg = <0x13>;
+ 				qcom,decimation = <0>;
+ 				qcom,pre-div-channel-scaling = <0>;
 				qcom,calibration-type = "ratiometric";
 				qcom,scale-function = <2>;
 				qcom,hw-settle-time = <2>;

@@ -178,7 +178,7 @@
 			qcom,iterm-ma = <100>;
 			qcom,float-voltage-mv = <4350>;
 			qcom,fastchg-current-ma = <1500>;
-			//qcom,mpp4-vadc = <&pm8937_vadc>;
+			qcom,mpp4-vadc = <&pm8937_vadc>;
 			qcom,resume-delta-mv = <200>;
 			qcom,chg-inhibit-fg;
 			qcom,rparasitic-uohm = <100000>;

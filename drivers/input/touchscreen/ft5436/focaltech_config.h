@@ -190,7 +190,7 @@
  * FW_APP.i file for upgrade
  * define your own fw_app, the sample one is invalid
  */
-#define FTS_UPGRADE_FW_APP                      "include/firmware/HQ_QL1516_ASUS_DJ0x67_Ver0x1a_20170608_app.i"
+#define FTS_UPGRADE_FW_APP                      "include/firmware/HQ_QL1516_ASUS_DJ0x67_Ver0x1b_20170807_app.i"
 
 /*
  * lcd_cfg.i file for lcd cfg upgrade

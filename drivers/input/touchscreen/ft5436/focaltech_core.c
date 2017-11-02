@@ -56,6 +56,7 @@
 #define FTS_I2C_VTG_MAX_UV                  1800000
 #endif
 #define FTS_READ_TOUCH_BUFFER_DIVIDED       0
+#define FTS_RESUME_EN 1
 /*****************************************************************************
 * Global variable or extern global variabls/functions
 ******************************************************************************/
@@ -80,7 +81,6 @@ char g_sz_debug[1024] = { 0 };
 
 int charging_flag = 0;
 int FG_charging_status = 0;
-static int tp_p_flag=0;
 
 static struct switch_dev switch_fw_version;
 
@@ -91,70 +91,87 @@ static void fts_release_all_finger(void);
 static int fts_ts_suspend(struct device *dev);
 static int fts_ts_resume(struct device *dev);
 
+#if FTS_RESUME_EN
 
+static struct work_struct fts_resume_work;
+static struct workqueue_struct *fts_resume_workqueue = NULL;
 
-/************************************************************************
-* Name: fts_p_show
-* Brief:  no
-* Input: device, device attribute, char buf
-* Output: no
-* Return:
-***********************************************************************/
-static ssize_t tp_p_show(struct device *dev, struct device_attribute *attr, char *buf)
+static void  fts_resume_func(struct work_struct *work)
 {
-    int count;
-    mutex_lock(&fts_input_dev->mutex);
-    count = sprintf(buf, "%d\n", tp_p_flag);
-    mutex_unlock(&fts_input_dev->mutex);
-    return count;
 
+	//struct ft5435_ts_data *data = dev_id;
+	struct fts_ts_data *data = fts_wq_data;
+	printk("Exter %s",__func__);
 
+	#if (!FTS_CHIP_IDC)
+    	fts_reset_proc(200);
+	#endif
+
+    fts_tp_state_recovery(data->client);
+
+	#if FTS_GESTURE_EN
+    	if (fts_gesture_resume(data->client) == 0) {
+        	int err;
+        	err = disable_irq_wake(data->client->irq);
+        	if (err)
+            	FTS_ERROR("%s: disable_irq_wake failed", __func__);
+        	data->suspended = false;
+			fts_irq_enable();
+        	FTS_FUNC_EXIT();
+        	return;
+    	}
+	#endif
+
+	#if FTS_PSENSOR_EN
+    	if (fts_sensor_resume(data) != 0) {
+        	disable_irq_wake(data->client->irq);
+        	data->suspended = false;
+        	FTS_FUNC_EXIT();
+        	return;
+    	}
+	#endif
+
+    data->suspended = false;
+    fts_irq_enable();
+
+	#if FTS_CHARGER_EN
+			if(FG_charging_status) {
+				fts_enter_charger_mode(fts_i2c_client, true);
+			} else {
+				fts_enter_charger_mode(fts_i2c_client, false);
+			}
+	#endif
+   
 }
 
-/************************************************************************
-* Name: fts_p_store
-* Brief:  no
-* Input: device, device attribute, char buf, char count
-* Output: no
-* Return:
-***********************************************************************/
-static ssize_t tp_p_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+void fts_resume_queue_work(void)
 {
-    mutex_lock(&fts_input_dev->mutex);
-    if ( strnicmp(buf, "1", 1)  == 0) {
-        printk("FTS psensor near\n");
-        tp_p_flag = 1;
-//	fts_irq_disable();
-	
-    }
-    else if ( strnicmp(buf, "0", 1)  == 0) {
-        printk(" FTS psensor farway\n");
-        tp_p_flag = 0;
-//	fts_irq_enable();
-    }
-    mutex_unlock(&fts_input_dev->mutex);
-
-    return count;
+    cancel_work_sync(&fts_resume_work);
+    queue_work(fts_resume_workqueue, &fts_resume_work);
 }
 
+int fts_resume_init(void)
+{
+    INIT_WORK(&fts_resume_work, fts_resume_func);
+    fts_resume_workqueue = create_workqueue("fts_resume_wq");
+    if (fts_resume_workqueue == NULL)
+    {
+        //FTS_ERROR("[POINT_REPORT]: Failed to create fts_point_report_check_workqueue!!");
+    }
+    else
+    {
+       // FTS_DEBUG("[POINT_REPORT]: Success to create fts_point_report_check_workqueue!!");
+    }
 
+    return 0;
+}
 
-/* sysfs  node
- *   read example: cat  fts_p_mode        ---read p mode
- *   write example:echo 01 > fts_p_mode   ---write p mode to 01
- *
- */
-static DEVICE_ATTR(tp_p_mode, S_IRUGO | S_IWUSR, tp_p_show, tp_p_store);
-
-static struct attribute *tp_p_mode_attrs[] = {
-    &dev_attr_tp_p_mode.attr,
-    NULL,
-};
-
-static struct attribute_group tp_p_group = {
-    .attrs = tp_p_mode_attrs,
-};
-
+int fts_resume_exit(void)
+{
+    destroy_workqueue(fts_resume_workqueue);
+    return 0;
+}
+#endif
 
 /*****************************************************************************
 *  Name: fts_wait_tp_to_valid
@@ -552,6 +569,10 @@ static int fts_input_dev_report_b(struct ts_event *event, struct fts_ts_data *da
             touchs |= BIT(event->au8_finger_id[i]);
             data->touchs |= BIT(event->au8_finger_id[i]);
 
+            if(event->au8_touch_event[i] == FTS_TOUCH_DOWN) {
+                FTS_INFO("Point %d, (%d, %d) DOWN!\n", event->au8_finger_id[i], event->au16_x[i], event->au16_y[i]);
+            }
+
 #if FTS_REPORT_PRESSURE_EN
             FTS_DEBUG("[B]P%d(%d, %d)[p:%d,tm:%d] DOWN!", event->au8_finger_id[i], event->au16_x[i], event->au16_y[i], event->pressure[i], event->area[i]);
 #else
@@ -566,7 +587,7 @@ static int fts_input_dev_report_b(struct ts_event *event, struct fts_ts_data *da
             input_report_abs(data->input_dev, ABS_MT_PRESSURE, 0);
 #endif
             data->touchs &= ~BIT(event->au8_finger_id[i]);
-            FTS_DEBUG("[B]P%d UP!", event->au8_finger_id[i]);
+            FTS_INFO("Point %d UP!", event->au8_finger_id[i]);
         }
     }
 
@@ -755,8 +776,15 @@ static int fts_read_touchdata(struct fts_ts_data *data)
         if (0 == event->pressure[i])
             event->pressure[i] = 0x3f;
 
-        if ((event->au8_touch_event[i] == 0 || event->au8_touch_event[i] == 2) && (event->point_num == 0))
-            break;
+        if ((event->au8_touch_event[i] == 0 || event->au8_touch_event[i] == 2) && (event->point_num == 0)) {
+            //break;
+            FTS_DEBUG("abnormal touch data from fw");
+            return -1;
+        	}
+    }
+		
+    if (event->touch_point == 0) {
+        return -1;
     }
     return 0;
 }
@@ -779,8 +807,7 @@ static void fts_report_value(struct fts_ts_data *data)
     }
 
 #if FTS_MT_PROTOCOL_B_EN
-	if(tp_p_flag == 0)
-   		 fts_input_dev_report_b(event, data);
+    fts_input_dev_report_b(event, data);
 #else
     fts_input_dev_report_a(event, data);
 #endif
@@ -1220,6 +1247,10 @@ static int fts_ts_probe(struct i2c_client *client, const struct i2c_device_id *i
         FTS_ERROR("Register switch device error.");
     }
 
+#if FTS_RESUME_EN
+	fts_resume_init();
+#endif
+
 #if FTS_APK_NODE_EN
     fts_create_apk_debug_channel(client);
 #endif
@@ -1263,13 +1294,6 @@ static int fts_ts_probe(struct i2c_client *client, const struct i2c_device_id *i
     data->early_suspend.resume = fts_ts_late_resume;
     register_early_suspend(&data->early_suspend);
 #endif
-
-    err = sysfs_create_group(&client->dev.kobj, &tp_p_group);
-    if (err != 0) {
-        FTS_ERROR("fts_p_mode_group(sysfs) create failed!");
-        sysfs_remove_group(&client->dev.kobj, &tp_p_group);
-    }
-
 
     FTS_FUNC_EXIT();
     return 0;
@@ -1343,8 +1367,6 @@ static int fts_ts_remove(struct i2c_client *client)
     fts_esdcheck_exit();
 #endif
 
-    sysfs_remove_group(&client->dev.kobj, &tp_p_group);
-
     FTS_FUNC_EXIT();
     return 0;
 }
@@ -1372,11 +1394,11 @@ static int fts_ts_suspend(struct device *dev)
 #if FTS_GESTURE_EN
     retval = fts_gesture_suspend(data->client);
     if (retval == 0) {
+        fts_release_all_finger();
         /* Enter into gesture mode(suspend) */
         retval = enable_irq_wake(fts_wq_data->client->irq);
         if (retval)
             FTS_ERROR("%s: set_irq_wake failed", __func__);
-        fts_release_all_finger();
         data->suspended = true;
         FTS_FUNC_EXIT();
         return 0;
@@ -1398,6 +1420,7 @@ static int fts_ts_suspend(struct device *dev)
 #endif
 
     fts_irq_disable();
+    msleep(10);
     fts_release_all_finger();
     /* TP enter sleep mode */
     retval = fts_i2c_write_reg(data->client, FTS_REG_POWER_MODE, FTS_REG_POWER_MODE_SLEEP_VALUE);
@@ -1405,7 +1428,6 @@ static int fts_ts_suspend(struct device *dev)
         FTS_ERROR("Set TP to sleep mode fail, ret=%d!", retval);
     }
     data->suspended = true;
-
     FTS_FUNC_EXIT();
 
     return 0;
@@ -1428,53 +1450,59 @@ static int fts_ts_resume(struct device *dev)
         FTS_FUNC_EXIT();
         return -1;
     }
-    tp_p_flag = 0;
-    printk("FTS fts resume, reset psensor flag\n");
+
     fts_release_all_finger();
 
-#if (!FTS_CHIP_IDC)
-    fts_reset_proc(200);
-#endif
+#if FTS_RESUME_EN
+	fts_resume_queue_work();
+#else
+
+	#if (!FTS_CHIP_IDC)
+    	fts_reset_proc(200);
+	#endif
 
     fts_tp_state_recovery(data->client);
 
-#if FTS_GESTURE_EN
-    if (fts_gesture_resume(data->client) == 0) {
-        int err;
-        err = disable_irq_wake(data->client->irq);
-        if (err)
-            FTS_ERROR("%s: disable_irq_wake failed", __func__);
-        data->suspended = false;
-		fts_irq_enable();
-        FTS_FUNC_EXIT();
-        return 0;
-    }
-#endif
+	#if FTS_GESTURE_EN
+    	if (fts_gesture_resume(data->client) == 0) {
+        	int err;
+        	err = disable_irq_wake(data->client->irq);
+        	if (err)
+            	FTS_ERROR("%s: disable_irq_wake failed", __func__);
+        	data->suspended = false;
+			fts_irq_enable();
+			fts_i2c_write_reg(data->client, 0x90, 1);
+        	FTS_FUNC_EXIT();
+        	return 0;
+    	}
+	#endif
 
-#if FTS_PSENSOR_EN
-    if (fts_sensor_resume(data) != 0) {
-        disable_irq_wake(data->client->irq);
-        data->suspended = false;
-        FTS_FUNC_EXIT();
-        return 0;
-    }
-#endif
+	#if FTS_PSENSOR_EN
+    	if (fts_sensor_resume(data) != 0) {
+        	disable_irq_wake(data->client->irq);
+        	data->suspended = false;
+        	FTS_FUNC_EXIT();
+        	return 0;
+    	}
+	#endif
 
     data->suspended = false;
-
     fts_irq_enable();
 
-#if FTS_CHARGER_EN
-    if(FG_charging_status) {
-        fts_enter_charger_mode(fts_i2c_client, true);
-    } else {
-        fts_enter_charger_mode(fts_i2c_client, false);
-    }
+	#if FTS_CHARGER_EN
+			if(FG_charging_status) {
+				fts_enter_charger_mode(fts_i2c_client, true);
+			} else {
+				fts_enter_charger_mode(fts_i2c_client, false);
+			}
+	#endif
+
 #endif
 
 #if FTS_ESDCHECK_EN
     fts_esdcheck_resume();
 #endif
+	fts_i2c_write_reg(data->client, 0x90, 1);
     FTS_FUNC_EXIT();
     return 0;
 }

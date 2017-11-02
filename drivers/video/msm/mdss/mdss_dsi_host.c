@@ -2364,8 +2364,6 @@ void mdss_dsi_wait4video_done(struct mdss_dsi_ctrl_pdata *ctrl)
 static int mdss_dsi_wait4video_eng_busy(struct mdss_dsi_ctrl_pdata *ctrl)
 {
 	int ret = 0;
-	u32 v_total = 0, v_blank = 0, sleep_ms = 0, fps = 0;
-	struct mdss_panel_info *pinfo = &ctrl->panel_data.panel_info;
 
 	if (ctrl->panel_mode == DSI_CMD_MODE)
 		return ret;

@@ -354,7 +354,9 @@ struct device_node *of_batterydata_get_best_profile(
 	 * Find the battery data with a battery id resistor closest to this one
 	 */
 	for_each_child_of_node(batterydata_container_node, node) {
+		
 		if (batt_type != NULL) {
+		printk("byr__ %s batt_type != NULL line:359 of_batterydata.c \n",__func__ );
 			rc = of_property_read_string(node, "qcom,battery-type",
 							&battery_type);
 			if (!rc && strcmp(battery_type, batt_type) == 0) {
@@ -363,6 +365,7 @@ struct device_node *of_batterydata_get_best_profile(
 				break;
 			}
 		} else {
+		printk("byr__ %s batt_type != NULL line:368 of_batterydata.c \n",__func__ );
 			rc = of_batterydata_read_batt_id_kohm(node,
 							"qcom,batt-id-kohm",
 							&batt_ids);
@@ -372,6 +375,12 @@ struct device_node *of_batterydata_get_best_profile(
 				delta = abs(batt_ids.kohm[i] - batt_id_kohm);
 				limit = (batt_ids.kohm[i] * id_range_pct) / 100;
 				in_range = (delta <= limit);
+
+				//printk("byr__ batt_ids.num %d %d \n",batt_ids.num,i);
+                //printk("byr__ batt_ids.kohm[i] %d batt_id_kohm %d id_range_pct %d\n",batt_ids.kohm[i],batt_id_kohm,id_range_pct);
+				//printk("byr__ delta %d limit %d in_range %d \n",delta,limit,in_range);
+
+				
 				/*
 				 * Check if the delta is the lowest one
 				 * and also if the limits are in range
